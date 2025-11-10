@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, ref } from 'vue'
 
 const props = defineProps({
@@ -86,9 +86,4 @@ function onLeave() { hoverX.value = null; hoverIdx.value = null }
   </div>
 </template>
 
-<style scoped>
-.sparkline { display: grid; gap: .25rem }
-.legend { display: flex; justify-content: space-between; align-items: center; color: var(--muted) }
-.legend .value { color: var(--fg); font-weight: 600 }
-</style>
-
+<style src="../styles/Sparkline.scss" lang="scss" scoped></style>

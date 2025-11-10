@@ -1,0 +1,6 @@
+
+.sparkline { display: grid; gap: .25rem }
+.legend {
+  display: flex; justify-content: space-between; align-items: center; color: var(--muted);
+  .value { color: var(--fg); font-weight: 600 }
+}

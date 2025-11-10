@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed } from 'vue'
 
 const props = defineProps({
@@ -53,12 +53,4 @@ const color = computed(() => {
   
 </template>
 
-<style scoped>
-.gauge { position: relative; display: inline-block }
-svg { transform: rotate(-90deg); display: block }
-.track { fill: none; stroke: #e5e7eb }
-.bar { fill: none; stroke-linecap: round; transition: stroke-dashoffset .4s ease, stroke .2s ease }
-.center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center }
-.value { font-size: 2.1rem; font-weight: 800; line-height: 1.1 }
-.label { margin-top: .15rem; color: #6b7280; font-size: .8rem }
-</style>
+<style src="../styles/RadialGauge.scss" lang="scss" scoped></style>

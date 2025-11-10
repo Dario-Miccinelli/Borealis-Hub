@@ -1,5 +1,8 @@
+// Base theme tokens (CSS variables so dark mode can switch at runtime)
 :root {
-  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
   --bg: #f1f5f9;
   --fg: #0f172a;
   --muted: #64748b;
@@ -7,6 +10,7 @@
   --border: #e2e8f0;
   --accent: #0ea5e9;
 }
+
 body.dark {
   --bg: #0b1020;
   --fg: #e5e7eb;
@@ -15,10 +19,17 @@ body.dark {
   --border: #243045;
   --accent: #38bdf8;
 }
+
+// Global resets and defaults
 * { box-sizing: border-box }
 html, body { height: 100% }
 body { margin: 0; background: var(--bg); color: var(--fg) }
-a { color: var(--accent); text-decoration: none }
-a:hover { text-decoration: underline }
-h1,h2,h3,p { margin: 0 }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  &:hover { text-decoration: underline }
+}
+
+h1, h2, h3, p { margin: 0 }
 button { font: inherit }

@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, onMounted, computed, watch, onBeforeUnmount } from "vue"
 import RadialGauge from "./components/RadialGauge.vue"
 import Sparkline from "./components/Sparkline.vue"
@@ -323,7 +323,7 @@ const cloudStatus = computed(() => {
           <div class="title">Weather (yr.no)</div>
         </div>
         <ul class="meta">
-          <li v-if="yr"><strong>Temp:</strong> {{ yr.temperature_c?.toFixed?.(1) ?? 'N/A' }} °C</li>
+          <li v-if="yr"><strong>Temp:</strong> {{ yr.temperature_c?.toFixed?.(1) ?? 'N/A' }} Â°C</li>
           <li v-if="yr"><strong>Wind:</strong> {{ yr.wind_speed_mps?.toFixed?.(1) ?? 'N/A' }} m/s</li>
           <li v-if="yr"><strong>Clouds:</strong> {{ yr.cloud_area_fraction_percent ?? 'N/A' }}%</li>
           <li v-if="yr && yr.precipitation_mm != null"><strong>Precip (next):</strong> {{ yr.precipitation_mm }} mm</li>
@@ -341,16 +341,16 @@ const cloudStatus = computed(() => {
         </div>
         <ul class="meta">
           <li><strong>Model:</strong> NOAA OVATION (SWPC)</li>
-          <li><strong>Coordinates:</strong> {{ lat || '—' }}, {{ lon || '—' }}</li>
+          <li><strong>Coordinates:</strong> {{ lat || 'â€”' }}, {{ lon || 'â€”' }}</li>
           <li><strong>Timestamp:</strong> <span class="muted">{{ lastUpdated || 'N/A' }}</span></li>
           <li v-if="kp"><strong>Kp (global):</strong> {{ kp.value }}</li>
           <li v-if="space"><strong>Solar wind:</strong> {{ Math.round(space.speed_km_s) }} km/s, Bz {{ space.bz_nT.toFixed(1) }} nT, Np {{ space.density_p_cm3.toFixed(1) }} cm3</li>
         </ul>
         <div class="links">
           <a href="https://services.swpc.noaa.gov/json/ovation_aurora_latest.json" target="_blank">NOAA feed</a>
-          <span>·</span>
+          <span>Â·</span>
           <a href="https://open-meteo.com/" target="_blank">Open-Meteo</a>
-          <span>·</span>
+          <span>Â·</span>
           <a href="https://www.spaceweatherlive.com/" target="_blank">SpaceWeatherLive</a>
         </div>
       </article>
@@ -361,63 +361,4 @@ const cloudStatus = computed(() => {
 
 </template>
 
-<style scoped>
-.page-bg { position: fixed; inset: 0; background: radial-gradient(1000px 600px at -10% -10%, #0ea5e933, transparent 60%), radial-gradient(800px 500px at 110% -20%, #a78bfa33, transparent 60%), linear-gradient(var(--bg), var(--bg)); z-index: -1 }
-.page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--fg) }
-.topbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; margin-bottom: .75rem; flex-wrap: wrap }
-.brand { display: flex; align-items: baseline; gap: .6rem }
-.brand .dot { width: .6rem; height: .6rem; border-radius: 999px; background: #0ea5e9; box-shadow: 0 0 0 3px #bae6fd }
-.brand h1 { margin: 0; font-size: 1.4rem }
-.subtitle { color: var(--muted); font-size: .9rem }
-.actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap }
-.chips { display: flex; gap: .35rem; flex-wrap: wrap }
-.chip { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 999px; padding: .35rem .6rem; cursor: pointer }
-.city { position: relative }
-.city input { padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 8px; min-width: 16rem; background: var(--card); color: var(--fg) }
-.dropdown { position: absolute; top: 110%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(15,23,42,.08); z-index: 10; overflow: hidden }
-.dropdown button { width: 100%; text-align: left; padding: .5rem .6rem; background: transparent; color: var(--fg); border: 0; border-bottom: 1px solid var(--border) }
-.dropdown button:last-child { border-bottom: 0 }
-.dropdown button:hover { background: #f8fafc }
-input { padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 8px; min-width: 8.5rem; background: var(--card); color: var(--fg) }
-button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer }
-button.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9 }
-button.ghost { background: var(--card) }
-button:disabled { opacity: .6; cursor: default }
-
-/* Flex layout */
-.metrics { display: flex; flex-wrap: wrap; gap: .75rem; margin: .75rem 0 0 }
-.metric { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .6rem .8rem; flex: 1 1 220px; min-width: 180px }
-.metric .m-title { font-size: .75rem; color: var(--muted) }
-.metric .m-value { font-weight: 700; font-size: 1.05rem; margin-top: .15rem }
-
-.content { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .5rem }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; backdrop-filter: blur(6px); flex: 1 1 300px; display: flex; flex-direction: column }
-.card.highlight { flex: 2 1 560px }
-.card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .5rem }
-.title { font-weight: 600; color: var(--fg) }
-.muted { color: var(--muted) }
-.centerbox { flex: 1; display: grid; place-items: center; min-height: 280px }
-.nd { font-size: 1.2rem; color: #94a3b8 }
-.cloudbox { display: grid; gap: .5rem; align-content: start }
-.status { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600 }
-.status.ok { color: #16a34a }
-.status.warn { color: #b45309 }
-.bar { height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden }
-.fill { height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); transition: width .4s ease }
-.meta { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem }
-.meta strong { color: var(--fg) }
-.links { margin-top: .6rem; display: flex; align-items: center; gap: .4rem }
-.error { color: #b00020; margin-top: 1rem }
-.spinner { width: 46px; height: 46px; border-radius: 999px; border: 4px solid #e2e8f0; border-top-color: #0ea5e9; animation: spin 1s linear infinite }
-@keyframes spin { to { transform: rotate(360deg) } }
-
-@media (max-width: 960px) { .card.highlight { flex-basis: 100% } }
-@media (max-width: 640px) { .actions { justify-content: flex-start } .card { flex-basis: 100% } }
-
-/* Dark mode tweaks inherit variables from style.css */
-body.dark .page-bg { background: radial-gradient(1000px 600px at -10% -10%, #0ea5e933, transparent 60%), radial-gradient(800px 500px at 110% -20%, #6d28d933, transparent 60%), linear-gradient(#0b1020, #0f172a) }
-body.dark input::placeholder { color: #64748b }
-body.dark .dropdown button:hover { background: #111827 }
-body.dark button.ghost { background: #0f172a; color: #e5e7eb; border-color: #243045 }
-body.dark a { color: #38bdf8 }
-</style>
+<style src="./styles/App.scss" lang="scss" scoped></style>
