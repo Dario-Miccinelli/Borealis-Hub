@@ -1,0 +1,25 @@
+<script setup>
+const props = defineProps({
+  modelValue: { type: Boolean, default: false },
+  label: { type: String, default: '' }
+})
+const emit = defineEmits(['update:modelValue'])
+function toggle() { emit('update:modelValue', !props.modelValue) }
+</script>
+
+<template>
+  <button class="toggle" :aria-pressed="modelValue" @click="toggle">
+    <span class="knob" :class="{ on: modelValue }"></span>
+    <span class="tlabel" v-if="label">{{ label }}</span>
+  </button>
+</template>
+
+<style scoped>
+.toggle { display: inline-flex; align-items: center; gap: .5rem; background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 999px; padding: .25rem .5rem .25rem .25rem; cursor: pointer }
+.knob { width: 34px; height: 20px; border-radius: 999px; background: #e2e8f0; position: relative; transition: background .2s }
+.knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.15); transition: transform .2s }
+.knob.on { background: #0ea5e9 }
+.knob.on::after { transform: translateX(14px) }
+.tlabel { font-size: .9rem; color: var(--muted) }
+</style>
+

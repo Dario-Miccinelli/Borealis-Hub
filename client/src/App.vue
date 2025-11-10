@@ -1,0 +1,391 @@
+<script setup>
+import { ref, onMounted, computed, watch, onBeforeUnmount } from "vue"
+import RadialGauge from "./components/RadialGauge.vue"
+import Sparkline from "./components/Sparkline.vue"
+import ToggleSwitch from "./components/ToggleSwitch.vue"
+
+const lat = ref("")
+const lon = ref("")
+const city = ref("")
+const suggestions = ref([])
+const loading = ref(false)
+const error = ref("")
+const probability = ref(null)
+const visibility = ref(null)
+const cloud = ref(null)
+const cloudSeries = ref([])
+const kp = ref(null)
+const space = ref(null)
+const source = ref("")
+const timestamp = ref("")
+const dark = ref(null)
+
+const lastUpdated = computed(() => (timestamp.value ? fmtTime(timestamp.value) : ""))
+const isDark = ref(false)
+const autoRefresh = ref(false)
+const refreshMs = ref(300000)
+let refreshTimer = null
+
+function fmtTime(iso) {
+  if (!iso) return ""
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
+
+async function fetchAurora() {
+  error.value = ""
+  probability.value = null
+  cloud.value = null
+  source.value = ""
+  timestamp.value = ""
+  const latNum = parseFloat(lat.value)
+  const lonNum = parseFloat(lon.value)
+  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
+    error.value = "Enter valid coordinates"
+    return
+  }
+  loading.value = true
+  try {
+    const r = await fetch(`/api/aurora?lat=${encodeURIComponent(latNum)}&lon=${encodeURIComponent(lonNum)}`)
+    const data = await r.json()
+    if (!data.ok) throw new Error(data.message || "API error")
+    probability.value = data.probability
+    cloud.value = data.cloud
+    visibility.value = data.visibility ?? null
+    dark.value = data.dark ?? null
+    kp.value = data.kp
+    source.value = data.source
+    timestamp.value = data.timestamps?.forecast || data.timestamps?.observation || ""
+    fetchCloudSeries(latNum, lonNum)
+    fetchSpace()
+  } catch (e) {
+    error.value = "Data not available, try again"
+  } finally {
+    loading.value = false
+  }
+}
+
+function geolocate() {
+  error.value = ""
+  if (!("geolocation" in navigator)) {
+    error.value = "Geolocation unavailable. Enter manually."
+    return
+  }
+  loading.value = true
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      lat.value = pos.coords.latitude.toFixed(4)
+      lon.value = pos.coords.longitude.toFixed(4)
+      city.value = "My location"
+      loading.value = false
+      fetchAurora()
+    },
+    () => {
+      error.value = "Permission denied. Enter manually."
+      loading.value = false
+    },
+    { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+  )
+}
+
+onMounted(() => {
+  const pref = localStorage.getItem("theme")
+  if (pref === "dark" || (!pref && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+    isDark.value = true
+    document.body.classList.add("dark")
+  }
+  city.value = "Tromso, NO"
+  lat.value = "69.6492"
+  lon.value = "18.9553"
+  fetchAurora()
+})
+
+function toggleDark() {
+  isDark.value = !isDark.value
+  document.body.classList.toggle("dark", isDark.value)
+  localStorage.setItem("theme", isDark.value ? "dark" : "light")
+}
+
+async function searchCity() {
+  suggestions.value = []
+  if (!city.value || city.value.length < 2) return
+  try {
+    const url = new URL("https://geocoding-api.open-meteo.com/v1/search")
+    url.searchParams.set("name", city.value)
+    url.searchParams.set("count", "5")
+    url.searchParams.set("language", "en")
+    const r = await fetch(url)
+    if (!r.ok) return
+    const data = await r.json()
+    suggestions.value = (data?.results || []).map((x) => ({
+      name: x.name,
+      country: x.country_code,
+      admin: x.admin1 || "",
+      lat: x.latitude,
+      lon: x.longitude,
+    }))
+  } catch {}
+}
+
+function pickSuggestion(s) {
+  lat.value = s.lat.toFixed(4)
+  lon.value = s.lon.toFixed(4)
+  city.value = `${s.name}, ${s.country}`
+  suggestions.value = []
+  fetchAurora()
+}
+
+async function applyCityEnter() {
+  if (suggestions.value.length) {
+    pickSuggestion(suggestions.value[0])
+    return
+  }
+  if (!city.value || city.value.length < 2) return
+  try {
+    const url = new URL("https://geocoding-api.open-meteo.com/v1/search")
+    url.searchParams.set("name", city.value)
+    url.searchParams.set("count", "1")
+    url.searchParams.set("language", "en")
+    const r = await fetch(url)
+    if (!r.ok) return
+    const data = await r.json()
+    const s = (data?.results || [])[0]
+    if (s) pickSuggestion({ name: s.name, country: s.country_code, lat: s.latitude, lon: s.longitude })
+  } catch {}
+}
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
+
+watch(autoRefresh, (v) => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+  if (v) {
+    refreshTimer = setInterval(() => fetchAurora(), refreshMs.value)
+  }
+})
+
+watch([lat, lon], () => {
+  const la = parseFloat(lat.value)
+  const lo = parseFloat(lon.value)
+  if (Number.isFinite(la) && Number.isFinite(lo)) fetchCloudSeries(la, lo)
+})
+
+async function fetchCloudSeries(la, lo) {
+  cloudSeries.value = []
+  try {
+    const url = new URL("https://api.open-meteo.com/v1/forecast")
+    url.searchParams.set("latitude", String(la))
+    url.searchParams.set("longitude", String(lo))
+    url.searchParams.set("hourly", "cloudcover")
+    url.searchParams.set("forecast_days", "1")
+    url.searchParams.set("timezone", "auto")
+    const rr = await fetch(url)
+    if (!rr.ok) return
+    const dj = await rr.json()
+    const vals = dj?.hourly?.cloudcover || []
+    cloudSeries.value = vals.slice(0, 12).map((v) => 100 - Math.max(0, Math.min(100, v)))
+  } catch {}
+}
+
+async function fetchSpace() {
+  try {
+    const r = await fetch("/api/spaceweather")
+    const j = await r.json()
+    if (j && j.ok) space.value = j
+  } catch {}
+}
+</script>
+
+<template>
+  <div class="page-bg"></div>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>Borealis Hub</h1>
+        <span class="subtitle">Local aurora snapshot</span>
+      </div>
+      <div class="actions">
+        <div class="city">
+          <input v-model="city" @input="searchCity" @keydown.enter.prevent="applyCityEnter" placeholder="Search city (e.g. Tromso)" />
+          <div v-if="suggestions.length" class="dropdown">
+            <button v-for="s in suggestions" :key="s.name + s.lat" @click="pickSuggestion(s)">
+              {{ s.name }}<span class="muted">, {{ s.admin || s.country }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="chips">
+          <button class="chip" @click="pickSuggestion({name:'Tromso', country:'NO', lat:69.6492, lon:18.9553})">Tromso</button>
+          <button class="chip" @click="pickSuggestion({name:'Reykjavik', country:'IS', lat:64.1466, lon:-21.9426})">Reykjavik</button>
+          <button class="chip" @click="pickSuggestion({name:'Fairbanks', country:'US', lat:64.8378, lon:-147.7164})">Fairbanks</button>
+          <button class="chip" @click="pickSuggestion({name:'Yellowknife', country:'CA', lat:62.4540, lon:-114.3718})">Yellowknife</button>
+        </div>
+        <div class="coords">
+          <label>Lat</label>
+          <input v-model="lat" @change="fetchAurora" inputmode="decimal" placeholder="60.1708" />
+          <label>Lon</label>
+          <input v-model="lon" @change="fetchAurora" inputmode="decimal" placeholder="24.9375" />
+        </div>
+        <button class="ghost" @click="geolocate" :disabled="loading" title="Use device location">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v10"/><path d="M12 2v2"/><path d="M2 12h2"/><path d="M20 12h2"/><circle cx="12" cy="12" r="6"/></svg>
+          Use Location
+        </button>
+        <button class="ghost" @click="toggleDark" :aria-pressed="isDark" title="Toggle dark mode">
+          <svg v-if="!isDark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          {{ isDark ? 'Light' : 'Dark' }}
+        </button>
+        <ToggleSwitch v-model="autoRefresh" label="Auto refresh" />
+        <button class="primary" @click="fetchAurora" :disabled="loading">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3v6h-6"/></svg>
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <section class="metrics">
+      <div class="metric">
+        <div class="m-title">Probability</div>
+        <div class="m-value">{{ probability !== null ? probability + '%' : 'N/A' }}</div>
+      </div>
+      <div class="metric">
+        <div class="m-title">Visibility</div>
+        <div class="m-value">{{ visibility !== null ? visibility + '%' : 'N/A' }}</div>
+      </div>
+      <div class="metric">
+        <div class="m-title">Kp now</div>
+        <div class="m-value">{{ kp?.value ?? 'N/A' }}</div>
+      </div>
+      <div class="metric" v-if="space">
+        <div class="m-title">Solar wind</div>
+        <div class="m-value">{{ Math.round(space.speed_km_s) }} km/s, Bz {{ space.bz_nT.toFixed(1) }} nT</div>
+      </div>
+    </section>
+
+    <section class="content">
+      <article class="card highlight">
+        <div class="card-head">
+          <div class="title">Aurora</div>
+          <span v-if="lastUpdated" class="muted">Updated: {{ lastUpdated }}</span>
+        </div>
+        <div class="centerbox">
+          <div v-if="loading" class="spinner" aria-label="Loading"></div>
+          <RadialGauge v-else-if="probability !== null" :value="probability" :size="300" label="Probability now" />
+          <div v-if="visibility !== null" class="muted" style="margin-top:.6rem">Visibility (clouds + night): {{ visibility }}%</div>
+          <div v-else class="nd">N/A</div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div class="title">Clouds</div>
+        </div>
+        <div class="cloudbox">
+          <div class="status" :class="cloud?.status === 'Visibile' ? 'ok' : 'warn'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-6.8 5.3A5 5 0 0 0 5 18h11a5 5 0 0 0 1-9.9A7 7 0 0 0 12 2Z"/></svg>
+            <span>{{ cloud ? (cloud.status === 'Visibile' ? 'Clear' : 'Cloudy') : 'N/A' }}</span>
+          </div>
+          <div class="bar" v-if="cloud">
+            <div class="fill" :style="{ width: (cloud.cover || 0) + '%' }"></div>
+          </div>
+          <div class="muted" v-if="cloud">Cloud cover: {{ cloud.cover }}%</div>
+          <Sparkline v-if="cloudSeries.length" :data="cloudSeries" :width="260" :height="64" label="Next 12h clearer skies" />
+          <div class="muted">{{ dark?.isNight === false ? 'Daylight now' : 'Nighttime' }}</div>
+          <div class="muted" v-if="!cloud">N/A</div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div class="title">Source</div>
+        </div>
+        <ul class="meta">
+          <li><strong>Model:</strong> NOAA OVATION (SWPC)</li>
+          <li><strong>Coordinates:</strong> {{ lat || '—' }}, {{ lon || '—' }}</li>
+          <li><strong>Timestamp:</strong> <span class="muted">{{ lastUpdated || 'N/A' }}</span></li>
+          <li v-if="kp"><strong>Kp (global):</strong> {{ kp.value }}</li>
+          <li v-if="space"><strong>Solar wind:</strong> {{ Math.round(space.speed_km_s) }} km/s, Bz {{ space.bz_nT.toFixed(1) }} nT, Np {{ space.density_p_cm3.toFixed(1) }} cm3</li>
+        </ul>
+        <div class="links">
+          <a href="https://services.swpc.noaa.gov/json/ovation_aurora_latest.json" target="_blank">NOAA feed</a>
+          <span>·</span>
+          <a href="https://open-meteo.com/" target="_blank">Open-Meteo</a>
+          <span>·</span>
+          <a href="https://www.spaceweatherlive.com/" target="_blank">SpaceWeatherLive</a>
+        </div>
+      </article>
+    </section>
+
+    <p v-if="error" class="error">{{ error }}</p>
+  </main>
+</template>
+
+<style scoped>
+.page-bg { position: fixed; inset: 0; background: radial-gradient(1000px 600px at -10% -10%, #0ea5e933, transparent 60%), radial-gradient(800px 500px at 110% -20%, #a78bfa33, transparent 60%), linear-gradient(var(--bg), var(--bg)); z-index: -1 }
+.page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--fg) }
+.topbar { display: flex; gap: .75rem; align-items: center; justify-content: space-between; margin-bottom: .75rem; flex-wrap: wrap }
+.brand { display: flex; align-items: baseline; gap: .6rem }
+.brand .dot { width: .6rem; height: .6rem; border-radius: 999px; background: #0ea5e9; box-shadow: 0 0 0 3px #bae6fd }
+.brand h1 { margin: 0; font-size: 1.4rem }
+.subtitle { color: var(--muted); font-size: .9rem }
+.actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap }
+.chips { display: flex; gap: .35rem; flex-wrap: wrap }
+.chip { background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 999px; padding: .35rem .6rem; cursor: pointer }
+.city { position: relative }
+.city input { padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 8px; min-width: 16rem; background: var(--card); color: var(--fg) }
+.dropdown { position: absolute; top: 110%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(15,23,42,.08); z-index: 10; overflow: hidden }
+.dropdown button { width: 100%; text-align: left; padding: .5rem .6rem; background: transparent; color: var(--fg); border: 0; border-bottom: 1px solid var(--border) }
+.dropdown button:last-child { border-bottom: 0 }
+.dropdown button:hover { background: #f8fafc }
+.coords { display: flex; align-items: center; gap: .4rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .4rem .6rem }
+label { font-size: .85rem; color: var(--muted) }
+input { padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 8px; min-width: 8.5rem; background: var(--card); color: var(--fg) }
+button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer }
+button.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9 }
+button.ghost { background: var(--card) }
+button:disabled { opacity: .6; cursor: default }
+
+/* Flex layout */
+.metrics { display: flex; flex-wrap: wrap; gap: .75rem; margin: .75rem 0 0 }
+.metric { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .6rem .8rem; flex: 1 1 220px; min-width: 180px }
+.metric .m-title { font-size: .75rem; color: var(--muted) }
+.metric .m-value { font-weight: 700; font-size: 1.05rem; margin-top: .15rem }
+
+.content { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .5rem }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; backdrop-filter: blur(6px); flex: 1 1 300px; display: flex; flex-direction: column }
+.card.highlight { flex: 2 1 560px }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .5rem }
+.title { font-weight: 600; color: var(--fg) }
+.muted { color: var(--muted) }
+.centerbox { flex: 1; display: grid; place-items: center; min-height: 280px }
+.nd { font-size: 1.2rem; color: #94a3b8 }
+.cloudbox { display: grid; gap: .5rem; align-content: start }
+.status { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600 }
+.status.ok { color: #16a34a }
+.status.warn { color: #b45309 }
+.bar { height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden }
+.fill { height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); transition: width .4s ease }
+.meta { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem }
+.meta strong { color: var(--fg) }
+.links { margin-top: .6rem; display: flex; align-items: center; gap: .4rem }
+.error { color: #b00020; margin-top: 1rem }
+.spinner { width: 46px; height: 46px; border-radius: 999px; border: 4px solid #e2e8f0; border-top-color: #0ea5e9; animation: spin 1s linear infinite }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+@media (max-width: 960px) { .card.highlight { flex-basis: 100% } }
+@media (max-width: 640px) { .actions { justify-content: flex-start } .card { flex-basis: 100% } }
+
+/* Dark mode tweaks inherit variables from style.css */
+body.dark .page-bg { background: radial-gradient(1000px 600px at -10% -10%, #0ea5e933, transparent 60%), radial-gradient(800px 500px at 110% -20%, #6d28d933, transparent 60%), linear-gradient(#0b1020, #0f172a) }
+body.dark input::placeholder { color: #64748b }
+body.dark .dropdown button:hover { background: #111827 }
+body.dark button.ghost { background: #0f172a; color: #e5e7eb; border-color: #243045 }
+body.dark a { color: #38bdf8 }
+</style>
