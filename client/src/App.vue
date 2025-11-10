@@ -16,6 +16,7 @@ const cloud = ref(null)
 const cloudSeries = ref([])
 const kp = ref(null)
 const space = ref(null)
+const yr = ref(null)
 const source = ref("")
 const timestamp = ref("")
 const dark = ref(null)
@@ -61,6 +62,7 @@ async function fetchAurora() {
     timestamp.value = data.timestamps?.forecast || data.timestamps?.observation || ""
     fetchCloudSeries(latNum, lonNum)
     fetchSpace()
+    fetchYr(latNum, lonNum)
   } catch (e) {
     error.value = "Data not available, try again"
   } finally {
@@ -201,6 +203,26 @@ async function fetchSpace() {
     if (j && j.ok) space.value = j
   } catch {}
 }
+
+async function fetchYr(la, lo) {
+  try {
+    const r = await fetch(`/api/yr?lat=${encodeURIComponent(la)}&lon=${encodeURIComponent(lo)}`)
+    const j = await r.json()
+    if (j && j.ok) yr.value = j
+  } catch {}
+}
+
+// Clouds widget: use Yr.no cloud cover (precise), no fallback
+const cloudPctPrecise = computed(() => {
+  const v = yr.value?.cloud_area_fraction_percent
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null
+})
+
+const cloudStatus = computed(() => {
+  if (cloudPctPrecise.value == null) return null
+  return cloudPctPrecise.value <= 40 ? 'Clear' : 'Cloudy'
+})
 </script>
 
 <template>
@@ -227,15 +249,9 @@ async function fetchSpace() {
           <button class="chip" @click="pickSuggestion({name:'Fairbanks', country:'US', lat:64.8378, lon:-147.7164})">Fairbanks</button>
           <button class="chip" @click="pickSuggestion({name:'Yellowknife', country:'CA', lat:62.4540, lon:-114.3718})">Yellowknife</button>
         </div>
-        <div class="coords">
-          <label>Lat</label>
-          <input v-model="lat" @change="fetchAurora" inputmode="decimal" placeholder="60.1708" />
-          <label>Lon</label>
-          <input v-model="lon" @change="fetchAurora" inputmode="decimal" placeholder="24.9375" />
-        </div>
-        <button class="ghost" @click="geolocate" :disabled="loading" title="Use device location">
+        <button class="ghost" @click="geolocate" :disabled="loading" title="Use current location">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v10"/><path d="M12 2v2"/><path d="M2 12h2"/><path d="M20 12h2"/><circle cx="12" cy="12" r="6"/></svg>
-          Use Location
+          Use current location
         </button>
         <button class="ghost" @click="toggleDark" :aria-pressed="isDark" title="Toggle dark mode">
           <svg v-if="!isDark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -260,7 +276,7 @@ async function fetchSpace() {
         <div class="m-value">{{ visibility !== null ? visibility + '%' : 'N/A' }}</div>
       </div>
       <div class="metric">
-        <div class="m-title">Kp now</div>
+        <div class="m-title">Kp now (global)</div>
         <div class="m-value">{{ kp?.value ?? 'N/A' }}</div>
       </div>
       <div class="metric" v-if="space">
@@ -288,17 +304,34 @@ async function fetchSpace() {
           <div class="title">Clouds</div>
         </div>
         <div class="cloudbox">
-          <div class="status" :class="cloud?.status === 'Visibile' ? 'ok' : 'warn'">
+          <div class="status" :class="cloudStatus === 'Clear' ? 'ok' : 'warn'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 0-6.8 5.3A5 5 0 0 0 5 18h11a5 5 0 0 0 1-9.9A7 7 0 0 0 12 2Z"/></svg>
-            <span>{{ cloud ? (cloud.status === 'Visibile' ? 'Clear' : 'Cloudy') : 'N/A' }}</span>
+            <span>{{ cloudStatus ?? 'N/A' }}</span>
           </div>
-          <div class="bar" v-if="cloud">
-            <div class="fill" :style="{ width: (cloud.cover || 0) + '%' }"></div>
+          <div class="bar" v-if="cloudPctPrecise != null">
+            <div class="fill" :style="{ width: (cloudPctPrecise || 0) + '%' }"></div>
           </div>
-          <div class="muted" v-if="cloud">Cloud cover: {{ cloud.cover }}%</div>
+          <div class="muted" v-if="cloudPctPrecise != null">Cloud cover: {{ cloudPctPrecise.toFixed(1) }}%</div>
           <Sparkline v-if="cloudSeries.length" :data="cloudSeries" :width="260" :height="64" label="Next 12h clearer skies" />
           <div class="muted">{{ dark?.isNight === false ? 'Daylight now' : 'Nighttime' }}</div>
-          <div class="muted" v-if="!cloud">N/A</div>
+          <div class="muted" v-if="cloudPctPrecise == null">N/A</div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div class="title">Weather (yr.no)</div>
+        </div>
+        <ul class="meta">
+          <li v-if="yr"><strong>Temp:</strong> {{ yr.temperature_c?.toFixed?.(1) ?? 'N/A' }} °C</li>
+          <li v-if="yr"><strong>Wind:</strong> {{ yr.wind_speed_mps?.toFixed?.(1) ?? 'N/A' }} m/s</li>
+          <li v-if="yr"><strong>Clouds:</strong> {{ yr.cloud_area_fraction_percent ?? 'N/A' }}%</li>
+          <li v-if="yr && yr.precipitation_mm != null"><strong>Precip (next):</strong> {{ yr.precipitation_mm }} mm</li>
+          <li v-if="yr && yr.updated_at"><strong>Updated:</strong> <span class="muted">{{ fmtTime(yr.updated_at) }}</span></li>
+          <li v-if="!yr"><span class="muted">N/A</span></li>
+        </ul>
+        <div class="links">
+          <a href="https://developer.yr.no/" target="_blank">Yr.no API</a>
         </div>
       </article>
 
@@ -325,6 +358,7 @@ async function fetchSpace() {
 
     <p v-if="error" class="error">{{ error }}</p>
   </main>
+
 </template>
 
 <style scoped>
@@ -344,8 +378,6 @@ async function fetchSpace() {
 .dropdown button { width: 100%; text-align: left; padding: .5rem .6rem; background: transparent; color: var(--fg); border: 0; border-bottom: 1px solid var(--border) }
 .dropdown button:last-child { border-bottom: 0 }
 .dropdown button:hover { background: #f8fafc }
-.coords { display: flex; align-items: center; gap: .4rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .4rem .6rem }
-label { font-size: .85rem; color: var(--muted) }
 input { padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 8px; min-width: 8.5rem; background: var(--card); color: var(--fg) }
 button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer }
 button.primary { background: #0ea5e9; color: #fff; border-color: #0ea5e9 }

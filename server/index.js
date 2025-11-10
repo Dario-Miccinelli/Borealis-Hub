@@ -10,10 +10,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5001;
 
-app.get('/api/hello', (req, res) => {
-  res.json({ message: 'Hello from Borealis Hub API' });
-});
-
 // GET /api/aurora?lat=..&lon=..
 app.get('/api/aurora', async (req, res) => {
   const lat = parseFloat(req.query.lat);
@@ -175,6 +171,48 @@ app.get('/api/spaceweather', async (_req, res) => {
     res.status(502).json({ ok: false, error: String(err) });
   }
 });
+
+// GET /api/yr?lat=..&lon=.. — weather snapshot from Yr/Met Norway (Locationforecast 2.0)
+// Requires a valid User-Agent per https://developer.yr.no/doc/GettingStarted/
+app.get('/api/yr', async (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lon = parseFloat(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return res.status(400).json({ ok: false, error: 'Invalid lat/lon' });
+  }
+
+  try {
+    const ua = process.env.YR_USER_AGENT || 'BorealisHub/0.1 (contact: set YR_USER_AGENT)';
+    const url = new URL('https://api.met.no/weatherapi/locationforecast/2.0/compact');
+    url.searchParams.set('lat', String(lat));
+    url.searchParams.set('lon', String(lon));
+    const r = await fetch(url, { headers: { 'User-Agent': ua, 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`YR fetch failed: ${r.status}`);
+    const j = await r.json();
+    const ts = j?.properties?.timeseries?.[0];
+    if (!ts) throw new Error('YR timeseries missing');
+    const inst = ts?.data?.instant?.details || {};
+    const n1 = ts?.data?.next_1_hours?.details || ts?.data?.next_6_hours?.details || {};
+
+    res.json({
+      ok: true,
+      updated_at: ts?.time || null,
+      temperature_c: numberOrNull(inst.air_temperature),
+      wind_speed_mps: numberOrNull(inst.wind_speed),
+      wind_from_direction_deg: numberOrNull(inst.wind_from_direction),
+      pressure_hpa: numberOrNull(inst.air_pressure_at_sea_level),
+      cloud_area_fraction_percent: numberOrNull(inst.cloud_area_fraction),
+      precipitation_mm: numberOrNull(n1.precipitation_amount)
+    });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: String(err) });
+  }
+});
+
+function numberOrNull(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : null;
+}
 
 // Candidate aurora cities for default selection
 const CITIES = [
